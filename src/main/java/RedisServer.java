@@ -2,17 +2,21 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class RedisServer {
-    ServerSocket serverSocket = null;
-    Socket clientSocket = null;
+    ServerSocket serverSocket;
+    Socket clientSocket;
     int port = 6379;
     ExecutorService executor;
+    Map <String, String> keyValueStore;
 
     public RedisServer() throws IOException {
+        keyValueStore = new HashMap<>();
         executor = Executors.newCachedThreadPool();
         System.out.println("Listening on port " + port);
 
@@ -152,6 +156,39 @@ public class RedisServer {
 
                         case "CLIENT" -> {
                             socket.getOutputStream().write(("+OK\r\n").getBytes(StandardCharsets.UTF_8));
+                        }
+
+                        case "SET" -> {
+                            if (commands.size() < 3) {
+                                socket.getOutputStream().write(("-ERR wrong number of arguments for 'set' command\r\n").getBytes(StandardCharsets.UTF_8));
+                            } else {
+                                String key = commands.get(1).toString();
+                                String value = commands.get(2).toString();
+                                keyValueStore.put(key, value);
+                                String setResponse = "+OK\r\n";
+                                socket.getOutputStream().write(setResponse.getBytes(StandardCharsets.UTF_8));
+                                System.out.println("Set key " + key + " to value " + value);
+                            }
+
+                        }
+
+                        case "GET" -> {
+                            if (commands.size() < 2) {
+                                socket.getOutputStream().write(("-ERR wrong number of arguments for 'get' command\r\n").getBytes(StandardCharsets.UTF_8));
+                            } else {
+                                String key = commands.get(1).toString();
+                                String value;
+                                try {
+                                    value = keyValueStore.get(key);
+                                }catch (NullPointerException e){
+                                    String nullResponse = "$-1\r\n";
+                                    socket.getOutputStream().write(nullResponse.getBytes(StandardCharsets.UTF_8));
+                                    return;
+                                }
+                                String getResponse = "$" + value.length() + "\r\n" + value + "\r\n";
+                                socket.getOutputStream().write(getResponse.getBytes(StandardCharsets.UTF_8));
+                                System.out.println("Got value for key " + key + ": " + value);
+                            }
                         }
 
                         default -> {
